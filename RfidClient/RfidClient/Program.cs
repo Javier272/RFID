@@ -15,8 +15,7 @@ namespace RfidClient
 		[STAThread]
 		static void Main()
 		{
-			File.WriteAllBytes("LoadMemLibrary.dll", Properties.Resources.LoadMemLibrary);
-			File.WriteAllBytes("UHFReader18.dll", Properties.Resources.UHFReader18);
+
 
 			Application.EnableVisualStyles();
 			Application.SetCompatibleTextRenderingDefault(false);

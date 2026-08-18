@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using UHFReader.Readers;
 using WebSocketSharp.Server;
 
+
 namespace RfidClient
 {
     public partial class MainForm : Form
@@ -38,7 +39,7 @@ namespace RfidClient
         private const string ArchivoBackup = "backup_tags_flota.json";
         private System.Timers.Timer _timerSincronizacion;
         private static readonly HttpClient httpClient = new HttpClient();
-        
+
         // URLs del servidor Node.js
         private const string ApiGetUrl = "http://localhost:3000/api/rfid/sincronizar";
         private const string ApiPostUrl = "http://localhost:3000/api/rfid/lectura";
@@ -51,11 +52,11 @@ namespace RfidClient
 
         private void MainForm_Load(object sender, EventArgs e)
         {
-            // Inicializar Caché y Sincronización
+            // Inicializar Caché y Sincronización de Borde
             CargarTagsLocales();
             IniciarTimerSincronizacion();
 
-            //启动Websocket服务器 (Inicia WS Original del proyecto)
+            // Iniciar Servidor WebSocket original
             try
             {
                 this.webSocket = new WebSocketServer(wsServer);
@@ -71,7 +72,6 @@ namespace RfidClient
                 return;
             }
 
-            //获取ServiceHosts
             WebSocketServiceHost hostTagConnect;
             WebSocketServiceHost hostTagDisconnect;
             if (!webSocket.WebSocketServices.TryGetServiceHost(wsTagConnect, out hostTagConnect) ||
@@ -82,12 +82,10 @@ namespace RfidClient
                 return;
             }
 
-            //挂载Tag Connect、Disconnect
             this.tagPool = new TagPool();
             this.tagPool.OnConnected += (tp, te) => wsBroadcast(te.Tags, hostTagConnect);
             this.tagPool.OnDisconnected += (tp, te) => wsBroadcast(te.Tags, hostTagDisconnect);
 
-            //尝试连接读卡设备 (Auto Conectar)
             this.notifyIcon.Icon = Properties.Resources.IconWarning;
             btnConnect_Click(sender, e);
         }
@@ -103,9 +101,9 @@ namespace RfidClient
         {
             try
             {
-                // CONEXIÓN POR RED MODIFICADA PARA IP 192.168.1.190
+                // Conexión por red apuntando a tu antena física
                 this.reader = new NetReader(new System.Net.IPEndPoint(System.Net.IPAddress.Parse("192.168.1.190"), 6000));
-                
+
                 this.btnConnect.Enabled = false;
                 this.notifyIcon.Icon = Properties.Resources.IconOK;
                 this.Hide();
@@ -125,7 +123,6 @@ namespace RfidClient
             List<byte[]> epcList;
             try
             {
-                // El SDK lee los tags físicos disponibles en la antena
                 epcList = reader.Inventory_G2(0, 0, 0);
             }
             catch
@@ -133,25 +130,21 @@ namespace RfidClient
                 return;
             }
 
-            // Procesamiento y Filtrado hacia Node.js
+            // Procesamiento, Filtro de base de datos y Cooldown local
             if (epcList != null && epcList.Count > 0)
             {
                 foreach (byte[] epcBytes in epcList)
                 {
-                    // Convertir el arreglo de bytes a String Hexadecimal limpio
                     string epcHex = BitConverter.ToString(epcBytes).Replace("-", "").ToUpper();
 
                     if (EvaluarYFiltrarTag(epcHex))
                     {
                         Console.WriteLine($"[C#] ✅ UNIDAD AUTORIZADA DETECTADA: {epcHex}");
-                        
-                        // Disparar la petición HTTP al servidor Node en un hilo secundario
                         Task.Run(() => NotificarWebappHttp(epcHex));
                     }
                 }
             }
 
-            // Lógica original de la UI
             tagPool.Throw(epcList);
             tagPool.Check(connectTicks, disconnectTicks);
         }
@@ -189,7 +182,7 @@ namespace RfidClient
             this.btnOpen_Click(sender, e);
         }
 
-        #region MÉTODOS DE FILTRADO Y RED (NUEVO)
+        #region MÉTODOS DE FILTRADO Y RED (BORDE)
 
         private void CargarTagsLocales()
         {
@@ -226,7 +219,6 @@ namespace RfidClient
             _timerSincronizacion.AutoReset = true;
             _timerSincronizacion.Start();
 
-            // Carga inicial
             Task.Run(() => SincronizarDesdeBackendAsync());
         }
 
@@ -260,13 +252,11 @@ namespace RfidClient
 
         private bool EvaluarYFiltrarTag(string epc)
         {
-            // Filtro 1: Base de Datos
             lock (_tagsAutorizados)
             {
                 if (!_tagsAutorizados.Contains(epc)) return false;
             }
 
-            // Filtro 2: Antirrebote (Cooldown)
             if (_ultimaLecturaTags.ContainsKey(epc))
             {
                 if ((DateTime.Now - _ultimaLecturaTags[epc]).TotalSeconds < CooldownSegundos)
